@@ -14,6 +14,20 @@ bolt.message(/ping/i, async ({ message, say }) => {
   await say({ thread_ts: message.ts, text: "pong — bot online ✅" });
 });
 
+/* 1b ─────────────  App mention ping-pong  ─────────── */
+bolt.event('app_mention', async ({ event, say }) => {
+  console.log("App mention received:", event.text);
+  
+  // Check if the mention contains "ping"
+  if (event.text.toLowerCase().includes('ping')) {
+    await say({ 
+      channel: event.channel,
+      thread_ts: event.ts, 
+      text: "pong — bot online ✅" 
+    });
+  }
+});
+
 /* 2 ─────────────  Vercel handler  ───────────── */
 module.exports = async (req, res) => {
   console.log(`${req.method} request received`);
