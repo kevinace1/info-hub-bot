@@ -6,6 +6,7 @@ const bolt = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
   token: process.env.SLACK_BOT_TOKEN,
   logLevel: LogLevel.DEBUG,
+  processBeforeResponse: true, // Important for serverless
 });
 
 /* 1 ─────────────  Simple ping-pong  ─────────── */
@@ -70,13 +71,52 @@ module.exports = async (req, res) => {
         return res.status(200).json({ challenge: parsedBody.challenge });
       }
 
-      // For other events, let Bolt handle them
-      // Set the raw body back on the request for Bolt
-      req.body = rawBody;
-      req.rawBody = rawBody;
+      // For other events, create a proper request object for Bolt
+      const boltRequest = {
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: rawBody,
+        rawBody: rawBody,
+      };
+
+      // Create a custom response object that Bolt can use
+      let responseData = { statusCode: 200, headers: {}, body: '' };
+      const boltResponse = {
+        status: (code) => {
+          responseData.statusCode = code;
+          return boltResponse;
+        },
+        header: (name, value) => {
+          responseData.headers[name] = value;
+          return boltResponse;
+        },
+        send: (body) => {
+          responseData.body = body;
+          return boltResponse;
+        },
+        json: (obj) => {
+          responseData.headers['Content-Type'] = 'application/json';
+          responseData.body = JSON.stringify(obj);
+          return boltResponse;
+        },
+        end: () => boltResponse,
+      };
+
+      // Process the event with Bolt
+      await bolt.processEvent(boltRequest, boltResponse);
       
-      // Use Bolt's processEvent method
-      await bolt.processEvent(req, res);
+      // Send the response
+      res.status(responseData.statusCode);
+      Object.keys(responseData.headers).forEach(key => {
+        res.setHeader(key, responseData.headers[key]);
+      });
+      
+      if (responseData.body) {
+        res.send(responseData.body);
+      } else {
+        res.end();
+      }
       
     } catch (error) {
       console.error("Error processing request:", error);
