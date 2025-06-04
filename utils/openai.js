@@ -47,8 +47,8 @@ async function generateResponse(prompt, options = {}) {
 
   const {
     maxTokens = 500,
-    temperature = 0.7,
-    model = 'gpt-3.5-turbo',
+    temperature = 0,
+    model = 'gpt-4o-mini',
     systemPrompt = 'You are a helpful assistant in a Slack workspace. Provide clear, concise, and professional responses.'
   } = options;
 
@@ -62,8 +62,7 @@ async function generateResponse(prompt, options = {}) {
         { role: 'user', content: prompt }
       ],
       max_tokens: maxTokens,
-      temperature,
-      timeout: 30000, // 30 second timeout
+      temperature
     });
 
     const response = completion.choices[0]?.message?.content?.trim();
