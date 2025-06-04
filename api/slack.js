@@ -3,9 +3,11 @@ const { App, LogLevel } = require("@slack/bolt");
 
 // Import our new utilities
 const { parseCommand, isValidCommand, getCommandSuggestions } = require("../utils/parser");
-const { formatError, formatCommandSuggestions } = require("../utils/responses");
+const { formatError, formatCommandSuggestions, formatWarning } = require("../utils/responses");
 const { getAllCommandNames } = require("../config/commands");
 const { handleHelp, handleStatus, handleInfo, handlePing } = require("../commands/basic");
+const { handleAsk, handleSummarize, handleExplain, getAIStatus } = require("../commands/ai");
+const { checkRateLimit } = require("../utils/rateLimit");
 
 /* 0 ─────────────  Bolt instance  ───────────── */
 const bolt = new App({
@@ -16,10 +18,20 @@ const bolt = new App({
 });
 
 /* 1 ─────────────  Command Router  ─────────── */
-async function routeCommand(command, args, fullArgs) {
+async function routeCommand(command, args, fullArgs, userId) {
   console.log(`Routing command: ${command} with args: [${args.join(', ')}]`);
   
   try {
+    // Determine command type for rate limiting
+    const aiCommands = ['ask', 'summarize', 'explain'];
+    const commandType = aiCommands.includes(command) ? 'AI_COMMANDS' : 'BASIC_COMMANDS';
+    
+    // Check rate limit
+    const rateLimitCheck = checkRateLimit(userId, commandType);
+    if (!rateLimitCheck.allowed) {
+      return formatWarning(rateLimitCheck.message);
+    }
+    
     switch (command) {
       case 'help':
         return handleHelp(args[0]);
@@ -33,11 +45,23 @@ async function routeCommand(command, args, fullArgs) {
       case 'ping':
         return handlePing();
       
-      // Placeholder for future commands
       case 'ask':
+        if (!fullArgs) {
+          return formatError('Please provide a question to ask.\nExample: `@bot ask What is machine learning?`');
+        }
+        return await handleAsk(fullArgs);
+      
       case 'summarize':
+        if (!fullArgs) {
+          return formatError('Please provide text to summarize.\nExample: `@bot summarize [paste your text here]`');
+        }
+        return await handleSummarize(fullArgs);
+      
       case 'explain':
-        return formatError(`"${command}" command is coming soon! 🚧`);
+        if (!fullArgs) {
+          return formatError('Please provide a topic to explain.\nExample: `@bot explain blockchain`');
+        }
+        return await handleExplain(fullArgs);
       
       case 'weather':
       case 'news':
@@ -107,6 +131,7 @@ module.exports = async (req, res) => {
           
           // Get bot user ID from the authorizations
           const botUserId = parsedBody.authorizations[0].user_id;
+          const userId = event.user;
           
           // Parse the command
           const { command, args, fullArgs } = parseCommand(event.text, botUserId);
@@ -127,7 +152,7 @@ module.exports = async (req, res) => {
             }
           } else {
             // Route the command
-            const response = await routeCommand(command, args, fullArgs);
+            const response = await routeCommand(command, args, fullArgs, userId);
             try {
               await bolt.client.chat.postMessage({
                 channel: event.channel,

@@ -19,6 +19,8 @@ const {
   ALL_COMMANDS
 } = require('../config/commands');
 
+const { isOpenAIAvailable } = require('../utils/openai');
+
 /**
  * Handle help command
  * @param {string} category - Optional category filter
@@ -103,11 +105,16 @@ function handleStatus() {
     const memUsage = process.memoryUsage();
     const memoryUsage = `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`;
     
+    // AI availability
+    const isAIAvailable = isOpenAIAvailable();
+    const aiStatus = isAIAvailable ? '✅ Available' : '❌ Unavailable';
+    
     const statusData = {
       uptime,
       version: BOT_INFO.version,
       responseTime,
       memoryUsage,
+      aiStatus,
       lastDeployment: new Date().toISOString().split('T')[0] // Today's date as placeholder
     };
     

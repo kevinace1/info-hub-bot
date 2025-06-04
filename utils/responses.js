@@ -116,6 +116,7 @@ function formatStatus(statusData) {
     version,
     responseTime,
     memoryUsage,
+    aiStatus,
     lastDeployment
   } = statusData;
 
@@ -125,6 +126,7 @@ function formatStatus(statusData) {
   statusText += `• Uptime: ${uptime}\n`;
   statusText += `• Response Time: ${responseTime}ms\n`;
   if (memoryUsage) statusText += `• Memory Usage: ${memoryUsage}\n`;
+  if (aiStatus) statusText += `• AI Features: ${aiStatus}\n`;
   if (lastDeployment) statusText += `• Last Deployed: ${lastDeployment}\n`;
 
   return {
