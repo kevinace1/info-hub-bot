@@ -48,6 +48,7 @@ module.exports = async (req, res) => {
       }
 
       console.log("Request body type:", parsedBody.type);
+      console.log("Full event data:", JSON.stringify(parsedBody, null, 2));
 
       // Handle URL verification challenge
       if (parsedBody.type === 'url_verification') {
