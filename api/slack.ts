@@ -2,56 +2,55 @@
 import { App, LogLevel } from "@slack/bolt";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-// 1) Read Slack secrets
-const {
-  SLACK_SIGNING_SECRET,
-  SLACK_BOT_TOKEN
-} = process.env;
+/* ---------- 0.  Bolt instance ---------- */
+const bolt = new App({
+  signingSecret: process.env.SLACK_SIGNING_SECRET!,
+  token: process.env.SLACK_BOT_TOKEN!,
+  logLevel: LogLevel.ERROR,
+});
 
-if (!SLACK_SIGNING_SECRET || !SLACK_BOT_TOKEN) {
-  // If either is missing, throw so we see it in logs
-  throw new Error(
-    "Missing SLACK_SIGNING_SECRET or SLACK_BOT_TOKEN. " +
-    "Check your Vercel Environment Variables."
-  );
+/* Simple liveness test */
+bolt.message(/ping/i, async ({ message, say }) => {
+  await say({
+    thread_ts: (message as any).ts,
+    text: "pong — bot online ✅",
+  });
+});
+
+/* ---------- 1. Helper to grab raw body (Slack needs it) ---------- */
+function readRawBody(req: VercelRequest): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req
+      .on("data", (c) => chunks.push(c as Buffer))
+      .on("end", () => resolve(Buffer.concat(chunks)))
+      .on("error", reject);
+  });
 }
 
-// 2) Initialize Slack Bolt
-const bolt = new App({
-  signingSecret: SLACK_SIGNING_SECRET,
-  token: SLACK_BOT_TOKEN,
-  logLevel: LogLevel.DEBUG
-});
-
-// 3) Simple ping listener
-bolt.message(/ping/i, async ({ message, say }) => {
+/* ---------- 2. Vercel handler ---------- */
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    await say({
-      thread_ts: (message as any).ts,
-      text: "pong — bot online ✅"
-    });
-  } catch (err) {
-    console.error("Error in bolt.message handler:", err);
-  }
-});
+    /* a) Handle Slack's initial URL-verification */
+    if (req.method === "POST" && req.headers["content-type"] === "application/json") {
+      const raw = await readRawBody(req);
+      const payload = JSON.parse(raw.toString());
+      if (payload.type === "url_verification" && payload.challenge) {
+        res.setHeader("Content-Type", "text/plain");
+        return res.status(200).send(payload.challenge);
+      }
+    }
 
-// 4) Export the handler — now with a guard so GETs don’t crash
-export default async function handler(
-  req: VercelRequest,
-  res: VercelResponse
-) {
-  // Only Slack sends POST requests with a signed body.
-  // Any browser GET (or other method) gets a harmless 200.
-  if (req.method !== "POST") {
-    res.status(200).send("OK");
-    return;
-  }
-
-  try {
+    /* b) All other events are passed to Bolt */
     await bolt.processEvent(req, res);
   } catch (err) {
-    console.error("Bolt.processEvent failed:", err);
-    res.status(500).send("Internal server error");
+    /* Log & return 500 so Vercel surfaces the stack trace */
+    console.error("Slack handler error:", err);
+    res.status(500).send("Internal Server Error");
   }
 }
 
+/* ---------- 3. Disable Vercel's body parser so we can read raw body ---------- */
+export const config = {
+  api: { bodyParser: false },
+};
