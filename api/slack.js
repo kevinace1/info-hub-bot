@@ -22,31 +22,41 @@ module.exports = async (req, res) => {
 
   /* b) Handle Slack URL verification challenge */
   if (req.method === "POST") {
-    // Parse the request body if it's not already parsed
-    let body = req.body;
-    if (typeof body === 'string') {
+    // Read raw body since bodyParser is disabled
+    let rawBody = '';
+    
+    // Collect the raw body data
+    req.on('data', chunk => {
+      rawBody += chunk.toString();
+    });
+    
+    req.on('end', async () => {
       try {
-        body = JSON.parse(body);
-      } catch (e) {
-        console.error("Failed to parse request body:", e);
-        return res.status(400).send("Invalid JSON");
+        // Parse the body
+        const body = JSON.parse(rawBody);
+        
+        // Handle URL verification challenge
+        if (body && body.type === 'url_verification' && body.challenge) {
+          console.log("Responding to Slack URL verification challenge");
+          return res.status(200).json({ challenge: body.challenge });
+        }
+        
+        // For other events, let Bolt handle them
+        // We need to recreate the request with the parsed body for Bolt
+        req.body = rawBody;
+        await bolt.processEvent(req, res);
+        
+      } catch (err) {
+        console.error("Error processing request:", err);
+        res.status(500).send("Internal Server Error");
       }
-    }
-
-    // Handle URL verification challenge
-    if (body && body.type === 'url_verification' && body.challenge) {
-      console.log("Responding to Slack URL verification challenge");
-      return res.status(200).json({ challenge: body.challenge });
-    }
+    });
+    
+    return; // Important: return here to prevent further execution
   }
 
-  /* c) All other Slack POSTs → Bolt */
-  try {
-    await bolt.processEvent(req, res);
-  } catch (err) {
-    console.error("Slack handler error:", err);
-    res.status(500).send("Internal Server Error");
-  }
+  /* c) Handle other methods */
+  res.status(405).send("Method Not Allowed");
 };
 
 /* 3 ─────────────  Disable body-parser  ───────── */
