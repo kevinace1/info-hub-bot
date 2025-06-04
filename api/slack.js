@@ -1,6 +1,12 @@
 // api/slack.js
 const { App, LogLevel } = require("@slack/bolt");
 
+// Import our new utilities
+const { parseCommand, isValidCommand, getCommandSuggestions } = require("../utils/parser");
+const { formatError, formatCommandSuggestions } = require("../utils/responses");
+const { getAllCommandNames } = require("../config/commands");
+const { handleHelp, handleStatus, handleInfo, handlePing } = require("../commands/basic");
+
 /* 0 ─────────────  Bolt instance  ───────────── */
 const bolt = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
@@ -9,33 +15,53 @@ const bolt = new App({
   processBeforeResponse: true,
 });
 
-/* 1 ─────────────  Simple ping-pong  ─────────── */
-bolt.message(/ping/i, async ({ message, say }) => {
-  console.log("Ping message received:", message.text);
-  await say({ thread_ts: message.ts, text: "pong — bot online ✅" });
-});
-
-/* 2 ─────────────  App mention ping-pong  ─────────── */
-bolt.event('app_mention', async ({ event, say }) => {
-  console.log("App mention received:", event.text);
+/* 1 ─────────────  Command Router  ─────────── */
+async function routeCommand(command, args, fullArgs) {
+  console.log(`Routing command: ${command} with args: [${args.join(', ')}]`);
   
-  // Check if the mention contains "ping"
-  if (event.text.toLowerCase().includes('ping')) {
-    await say({ 
-      channel: event.channel,
-      thread_ts: event.ts, 
-      text: "pong — bot online ✅" 
-    });
+  try {
+    switch (command) {
+      case 'help':
+        return handleHelp(args[0]);
+      
+      case 'status':
+        return handleStatus();
+      
+      case 'info':
+        return handleInfo();
+      
+      case 'ping':
+        return handlePing();
+      
+      // Placeholder for future commands
+      case 'ask':
+      case 'summarize':
+      case 'explain':
+        return formatError(`"${command}" command is coming soon! 🚧`);
+      
+      case 'weather':
+      case 'news':
+      case 'time':
+        return formatError(`"${command}" command is coming soon! 🚧`);
+      
+      default:
+        // Command not found - suggest alternatives
+        const suggestions = getCommandSuggestions(command, getAllCommandNames());
+        return formatCommandSuggestions(command, suggestions);
+    }
+  } catch (error) {
+    console.error(`Error in routeCommand for "${command}":`, error);
+    return formatError(`Sorry, there was an error processing the "${command}" command.`);
   }
-});
+}
 
-/* 3 ─────────────  Vercel handler  ───────────── */
+/* 2 ─────────────  Vercel handler  ───────────── */
 module.exports = async (req, res) => {
   console.log(`${req.method} request received`);
   
   /* a) Browser GET → quick liveness */
   if (req.method === "GET") {
-    return res.status(200).send("👍 Alive");
+    return res.status(200).send("👍 Info Hub Bot - Alive and Ready!");
   }
 
   /* b) Handle POST requests */
@@ -70,43 +96,67 @@ module.exports = async (req, res) => {
         return res.status(200).json({ challenge: parsedBody.challenge });
       }
 
-      // Handle event_callback (this is what we're getting)
+      // Handle event_callback
       if (parsedBody.type === 'event_callback') {
         const event = parsedBody.event;
         console.log("Event type:", event.type);
         
-        // Handle app_mention events directly
+        // Handle app_mention events
         if (event.type === 'app_mention') {
           console.log("App mention received:", event.text);
           
-          // Check if the mention contains "ping"
+          // Get bot user ID from the authorizations
+          const botUserId = parsedBody.authorizations[0].user_id;
+          
+          // Parse the command
+          const { command, args, fullArgs } = parseCommand(event.text, botUserId);
+          console.log("Parsed command:", { command, args, fullArgs });
+          
+          if (!command) {
+            // No command provided, show help
+            const response = handleHelp();
+            try {
+              await bolt.client.chat.postMessage({
+                channel: event.channel,
+                thread_ts: event.ts,
+                text: response.text
+              });
+              console.log("Help response sent successfully");
+            } catch (error) {
+              console.error("Error sending help response:", error);
+            }
+          } else {
+            // Route the command
+            const response = await routeCommand(command, args, fullArgs);
+            try {
+              await bolt.client.chat.postMessage({
+                channel: event.channel,
+                thread_ts: event.ts,
+                text: response.text
+              });
+              console.log(`Response sent successfully for command: ${command}`);
+            } catch (error) {
+              console.error(`Error sending response for command "${command}":`, error);
+            }
+          }
+        }
+        
+        // Handle regular message events (for direct messages)
+        if (event.type === 'message' && event.text && !event.bot_id) {
+          console.log("Direct message received:", event.text);
+          
+          // Simple ping response for direct messages
           if (event.text.toLowerCase().includes('ping')) {
-            // Use the Slack Web API directly to respond
             try {
               await bolt.client.chat.postMessage({
                 channel: event.channel,
                 thread_ts: event.ts,
                 text: "pong — bot online ✅"
               });
-              console.log("Response sent successfully");
+              console.log("Ping response sent successfully");
             } catch (error) {
-              console.error("Error sending message:", error);
+              console.error("Error sending ping response:", error);
             }
-          }
-        }
-        
-        // Handle regular message events
-        if (event.type === 'message' && event.text && event.text.match(/ping/i)) {
-          console.log("Ping message received:", event.text);
-          try {
-            await bolt.client.chat.postMessage({
-              channel: event.channel,
-              thread_ts: event.ts,
-              text: "pong — bot online ✅"
-            });
-            console.log("Response sent successfully");
-          } catch (error) {
-            console.error("Error sending message:", error);
           }
         }
       }
@@ -123,5 +173,5 @@ module.exports = async (req, res) => {
   }
 };
 
-/* 4 ─────────────  Disable body-parser  ───────────── */
+/* 3 ─────────────  Disable body-parser  ───────────── */
 module.exports.config = { api: { bodyParser: false } };
