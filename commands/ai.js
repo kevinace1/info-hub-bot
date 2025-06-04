@@ -44,9 +44,9 @@ async function handleAsk(question) {
     const answer = await askQuestion(question);
     
     // Format the response
-    let responseText = `🤖 **AI Assistant**\n\n`;
-    responseText += `**Question:** ${question}\n\n`;
-    responseText += `**Answer:**\n${answer}`;
+    let responseText = `🤖 *AI Assistant*\n\n`;
+    responseText += `*Question:* ${question}\n\n`;
+    responseText += `*Answer:*\n${answer}`;
     
     return { text: responseText };
     
@@ -87,10 +87,10 @@ async function handleSummarize(text) {
     const summary = await summarizeText(text);
     
     // Format the response
-    let responseText = `📝 **Text Summary**\n\n`;
-    responseText += `**Original length:** ${text.length} characters\n`;
-    responseText += `**Summary length:** ${summary.length} characters\n\n`;
-    responseText += `**Summary:**\n${summary}`;
+    let responseText = `📝 *Text Summary*\n\n`;
+    responseText += `*Original length:* ${text.length} characters\n`;
+    responseText += `*Summary length:* ${summary.length} characters\n\n`;
+    responseText += `*Summary:*\n${summary}`;
     
     return { text: responseText };
     
@@ -127,9 +127,9 @@ async function handleExplain(topic) {
     const explanation = await explainTopic(topic);
     
     // Format the response
-    let responseText = `🎓 **Topic Explanation**\n\n`;
-    responseText += `**Topic:** ${topic}\n\n`;
-    responseText += `**Explanation:**\n${explanation}`;
+    let responseText = `🎓 *Topic Explanation*\n\n`;
+    responseText += `*Topic:* ${topic}\n\n`;
+    responseText += `*Explanation:*\n${explanation}`;
     
     return { text: responseText };
     
