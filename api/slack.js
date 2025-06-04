@@ -5,7 +5,7 @@ const { App, LogLevel } = require("@slack/bolt");
 const bolt = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
   token: process.env.SLACK_BOT_TOKEN,
-  logLevel: LogLevel.DEBUG, // Changed to DEBUG for better logging
+  logLevel: LogLevel.DEBUG,
 });
 
 /* 1 ─────────────  Simple ping-pong  ─────────── */
@@ -26,47 +26,48 @@ module.exports = async (req, res) => {
   /* b) Handle POST requests */
   if (req.method === "POST") {
     try {
-      // Use a Promise to handle the async body reading
-      const body = await new Promise((resolve, reject) => {
-        let rawBody = '';
-        
+      // Read the raw body
+      const rawBody = await new Promise((resolve, reject) => {
+        let body = '';
         req.on('data', chunk => {
-          rawBody += chunk.toString();
+          body += chunk.toString();
         });
-        
-        req.on('end', () => {
-          try {
-            resolve(JSON.parse(rawBody));
-          } catch (e) {
-            console.error("JSON parse error:", e);
-            reject(e);
-          }
-        });
-        
+        req.on('end', () => resolve(body));
         req.on('error', reject);
       });
 
-      console.log("Request body type:", body.type);
+      console.log("Raw body received, length:", rawBody.length);
+      
+      // Parse the body to check for URL verification
+      let parsedBody;
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch (e) {
+        console.error("JSON parse error:", e);
+        return res.status(400).json({ error: "Invalid JSON" });
+      }
+
+      console.log("Request body type:", parsedBody.type);
 
       // Handle URL verification challenge
-      if (body.type === 'url_verification') {
+      if (parsedBody.type === 'url_verification') {
         console.log("URL verification challenge received");
-        return res.status(200).json({ challenge: body.challenge });
+        return res.status(200).json({ challenge: parsedBody.challenge });
       }
 
       // For other events, let Bolt handle them
-      // Create a new request object for Bolt
-      const mockReq = {
-        ...req,
-        body: JSON.stringify(body),
-        rawBody: JSON.stringify(body)
-      };
-
-      await bolt.processEvent(mockReq, res);
+      // Set the raw body back on the request for Bolt
+      req.body = rawBody;
+      req.rawBody = rawBody;
+      
+      // Use Bolt's processEvent method
+      await bolt.processEvent(req, res);
       
     } catch (error) {
       console.error("Error processing request:", error);
-      return res.status(500).json({ error: "Internal Server Error" });
+      if (!res.headersSent) {
+        return res.status(500).json({ error: "Internal Server Error" });
+      }
     }
   } else {
     return res.status(405).json({ error: "Method Not Allowed" });
