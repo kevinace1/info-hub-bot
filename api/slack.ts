@@ -1,10 +1,11 @@
+
 // api/slack.ts
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// This is a Vercel Edge Function (no Node types or Express-style res objects).
 
-export default function handler(_req: VercelRequest, res: VercelResponse) {
-  // This simple function just proves the URL is working.
-  res.status(200).send('👍 Alive');
-}
+export default (request: Request) => {
+  // Always return plain text with a 200 status.
+  return new Response("👍 Alive", { status: 200 });
+};
 
-// Tell Vercel to use its fast Edge runtime
-export const config = { runtime: 'edge' };
+// Tell Vercel: run this as an Edge Function (not a Node server).
+export const config = { runtime: "edge" };
