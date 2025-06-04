@@ -35,4 +35,3 @@ export default async function handler(
 }
 
 // 5) Use Vercel's Edge runtime (fast cold-start)
-export const config = { runtime: "edge" };
