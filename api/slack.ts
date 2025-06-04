@@ -2,36 +2,52 @@
 import { App, LogLevel } from "@slack/bolt";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-// 1) Read the environment variables Vercel populated for us
+// 1) Pull the env vars that must be present
 const {
-  SLACK_SIGNING_SECRET,   // e.g. xxxxxxx
-  SLACK_BOT_TOKEN         // e.g. xoxb-xxxx
+  SLACK_SIGNING_SECRET,
+  SLACK_BOT_TOKEN
 } = process.env;
 
-// 2) Initialize Slack Bolt
+// If either is missing, throw an explicit error so it shows in logs
+if (!SLACK_SIGNING_SECRET || !SLACK_BOT_TOKEN) {
+  throw new Error(
+    "Missing SLACK_SIGNING_SECRET or SLACK_BOT_TOKEN. " +
+    "Check your Vercel Environment Variables."
+  );
+}
+
+// 2) Initialize Bolt
 const bolt = new App({
-  signingSecret: SLACK_SIGNING_SECRET!,
-  token: SLACK_BOT_TOKEN!,
-  logLevel: LogLevel.WARN,
+  signingSecret: SLACK_SIGNING_SECRET,
+  token: SLACK_BOT_TOKEN,
+  logLevel: LogLevel.DEBUG  // set to DEBUG so we see more info in logs
 });
 
-// 3) When the bot is mentioned with the text “ping”, reply “pong — bot online ✅”
+// 3) Simple ping listener
 bolt.message(/ping/i, async ({ message, say }) => {
-  // message.ts is the Slack timestamp; replying in thread_ts places it as a thread.
-  await say({
-    thread_ts: (message as any).ts,
-    text: "pong — bot online ✅"
-  });
+  try {
+    await say({
+      thread_ts: (message as any).ts,
+      text: "pong — bot online ✅"
+    });
+  } catch (err) {
+    console.error("Error inside bolt.message handler:", err);
+  }
 });
 
-// 4) Export a handler that Vercel can invoke as an HTTP Endpoint
+// 4) Export the handler
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // Bolt’s processEvent will verify Slack’s POST signature 
-  // and dispatch to the `bolt.message` handler above.
-  await bolt.processEvent(req, res);
+  try {
+    // processEvent will verify the Slack signature and dispatch to bolt.message
+    await bolt.processEvent(req, res);
+  } catch (err) {
+    console.error("Bolt.processEvent failed:", err);
+    // Return a generic 500 so Slack knows something went wrong
+    res.status(500).send("Internal server error");
+  }
 }
 
-// 5) Use Vercel's Edge runtime (fast cold-start)
+// No `export const config = { runtime: "edge" }` → this is now a Node.js Function
